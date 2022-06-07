@@ -42,6 +42,107 @@ func TestNewParser(t *testing.T) {
 	}
 }
 
+func Test_parser_Help(t *testing.T) {
+	type fields struct {
+		in        interface{}
+		fields    map[string]structField
+		envPrefix string
+		cfgPath   string
+		parsedCfg map[string]string
+		parsedCli map[string]string
+	}
+	type args struct {
+		prefix string
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		want   string
+	}{
+		{
+			name: "blank",
+			fields: fields{
+				fields: map[string]structField{
+					"first_field": {
+						name: "short_field",
+						tags: structFieldTags{
+							name:            "b",
+							defaultValue:    "1",
+							hasDefaultValue: true,
+							description:     "Some description",
+						},
+					},
+					"second_field": {
+						name: "long_field",
+						tags: structFieldTags{
+							name:        "afffffff",
+							mode:        modeCli | modeCfg,
+							description: "Some more description",
+						},
+					},
+					"third_field": {
+						name: "long_field",
+						tags: structFieldTags{
+							name:        "cfffffffff",
+							mode:        modeCli | modeCfg | modeEnv,
+							description: "Some more more description",
+						},
+					},
+				},
+			},
+			want: `--afffffff   Some more description (cli, cfg only)
+--b[=1]      Some description
+--cfffffffff Some more more description
+`,
+		},
+		{
+			name: "prefix with sort check",
+			fields: fields{
+				fields: map[string]structField{
+					"first_field": {
+						name: "short_field",
+						tags: structFieldTags{
+							name:            "f",
+							defaultValue:    "1",
+							hasDefaultValue: true,
+							description:     "Some description",
+						},
+					},
+					"second_field": {
+						name: "short_field",
+						tags: structFieldTags{
+							name:            "ff",
+							defaultValue:    "2",
+							hasDefaultValue: true,
+							description:     "Some description two",
+						},
+					},
+				},
+			},
+			args: args{prefix: "        "},
+			want: `        --f[=1]  Some description
+        --ff[=2] Some description two
+`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &parser{
+				in:        tt.fields.in,
+				fields:    tt.fields.fields,
+				envPrefix: tt.fields.envPrefix,
+				cfgPath:   tt.fields.cfgPath,
+				parsedCfg: tt.fields.parsedCfg,
+				parsedCli: tt.fields.parsedCli,
+			}
+			if got := p.Help(tt.args.prefix); got != tt.want {
+				t.Errorf("parser.Help() = \n%v\n, want \n%v\n", got, tt.want)
+			}
+		})
+	}
+}
+
 func Test_parser_Parse(t *testing.T) {
 	type errTestStructFile struct {
 		Help       bool   `config:"name:help;mode:cli;default:f;desc:Lorem ipsum"`

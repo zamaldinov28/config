@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -56,6 +58,7 @@ const (
 	modeCli = 0b100
 	modeCfg = 0b010
 	modeEnv = 0b001
+	modeAll = 0b111
 )
 
 var modes = map[string]int{
@@ -79,6 +82,7 @@ var boolValues = map[bool][]string{
 	false: {"false", "f", "n", "no"},
 }
 
+// Create new instance of parser for specific config struct
 func NewParser(in interface{}) (parser, error) {
 	if reflect.Pointer != reflect.ValueOf(in).Type().Kind() {
 		return parser{}, errors.New("in should be a pointer to struct")
@@ -89,6 +93,51 @@ func NewParser(in interface{}) (parser, error) {
 	}, nil
 }
 
+func (p *parser) Help(prefix string) string {
+	longestParameter := 0
+	fieldsHelp := [][2]string{}
+
+	for _, field := range p.fields {
+		defaultHint := ""
+		if field.tags.hasDefaultValue {
+			defaultHint = fmt.Sprintf("[=%s]", field.tags.defaultValue)
+		}
+		var leftPart = fmt.Sprintf("--%s%s", field.tags.name, defaultHint)
+		var rightPart = field.tags.description
+		if field.tags.mode > 0 && field.tags.mode < modeAll {
+			fieldModes := []string{}
+			for title, mode := range modes {
+				if field.tags.mode&mode > 0 {
+					fieldModes = append(fieldModes, title)
+				}
+			}
+			if len(fieldModes) > 0 {
+				rightPart = fmt.Sprintf("%s (%s only)", rightPart, strings.Join(fieldModes, ", "))
+			}
+		}
+		fieldsHelp = append(fieldsHelp, [2]string{
+			leftPart,
+			rightPart,
+		})
+
+		if len(leftPart) > longestParameter {
+			longestParameter = len(leftPart)
+		}
+	}
+
+	sort.Slice(fieldsHelp, func(i, j int) bool {
+		return sort.StringsAreSorted([]string{fieldsHelp[i][0], fieldsHelp[j][0]})
+	})
+
+	buffer := bytes.NewBufferString("")
+	for _, field := range fieldsHelp {
+		buffer.WriteString(fmt.Sprintf("%s%-*s %s\n", prefix, longestParameter, field[0], field[1]))
+	}
+
+	return buffer.String()
+}
+
+// Execute parsing from all available sources
 func (p *parser) Parse() error {
 	p.fields = make(map[string]structField)
 
