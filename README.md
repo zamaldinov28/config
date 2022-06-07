@@ -22,8 +22,8 @@ import (
 )
 
 type Config struct {
-	ConfigFile string `config:"name:config_file;mode:cli;flag:config_file;desc:Use config from file. Should be in JSON or Unix-like configuration file format"`
-	Prefix     string `config:"name:prefix;mode:cli;flag:env_prefix;default:;desc:Use environment variables prefix. Ex.: (default) DB_HOST, (-prefix=CNF) CNF_DB_HOST"`
+	ConfigFile string `config:"name:config_file;mode:cli;desc:Use config from file. Should be in JSON or Unix-like configuration file format"`
+	Prefix     string `config:"name:prefix;mode:cli;default:;desc:Use environment variables prefix. Ex.: (default) DB_HOST, (-prefix=CNF) CNF_DB_HOST"`
 
 	Env     string `config:"name:env;default:dev;desc:Current environment. Available values: dev, test, stage, prod"`
 	DbUser  string `config:"name:db_user;default:user;desc:Database user"`
@@ -110,18 +110,3 @@ will print
 ```
     --db_user[=root] Database username (cli, cfg only)
 ```
-
-### `flag`
-
-Special flags for config parser.
-
-Available values:
-
-- `config_file` - use to specify from which config field should be taken path to config file
-- `env_prefix` - use to set special prefix for all configs. Ex.:
-	```golang
-	DbUser    string `config:"name:db_user"`
-	EnvPrefix string `config:"prefix;mode:cli;flag:env_prefix"`
-	```
-
-	In this case if you run program with config `--prefix=PROGRAM_`, the `PROGRAM_DB_USER` withh be applied
