@@ -93,6 +93,7 @@ func NewParser(in interface{}) (parser, error) {
 	}, nil
 }
 
+// Return string with formatted and sorted usage hint
 func (p *parser) Help(prefix string) string {
 	longestParameter := 0
 	fieldsHelp := [][2]string{}

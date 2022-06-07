@@ -1,6 +1,8 @@
 # Config setup from different sources
 
 [![Buy me a coffee](https://badgen.net/badge/icon/buymeacoffee?icon=buymeacoffee&label)](https://www.buymeacoffee.com/zamaldinov28)
+[![Go package doc](https://badgen.net/badge/icon/Go%20reference?icon=https%3A%2F%2Fgo.dev%2Fblog%2Fgo-brand%2FGo-Logo%2FSVG%2FGo-Logo_White.svg&label)](https://pkg.go.dev/github.com/zamaldinov28/config)
+![Last stable version](https://badgen.net/github/release/zamaldinov28/config)
 
 If you need to take configs from different env, config file, or from cli, combine it into one struct, and use it as simple as possible, you are here! Tiny package allow you to setup everything you want using golang tag `config`, and few lines of code.
 
@@ -106,7 +108,7 @@ DbUser string `config:"name:db_user;mode:cli,cfg;default:root;desc:Database user
 will print
 
 ```
-    --db_user[=root] Database username (cli, cfg)
+    --db_user[=root] Database username (cli, cfg only)
 ```
 
 ### `flag`
