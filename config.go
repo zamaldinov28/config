@@ -14,7 +14,7 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-type Parser struct {
+type parser struct {
 	in        interface{}
 	fields    map[string]structField
 	envPrefix string
@@ -39,39 +39,39 @@ type structFieldTags struct {
 	flags           int
 }
 
-const SEPARATOR = ";"
-const SEPARATOR_INNER = ":"
-const SEPARATOR_LIST = ","
+const separator = ";"
+const separatorInner = ":"
+const separatorList = ","
 
 const (
-	TAG         = "config"
-	TAG_NAME    = "name"
-	TAG_MODE    = "mode"
-	TAG_DEFAULT = "default"
-	TAG_DESC    = "desc"
-	TAG_FLAG    = "flag"
+	tag        = "config"
+	tagName    = "name"
+	tagMode    = "mode"
+	tagDefault = "default"
+	tagDesc    = "desc"
+	tagFlag    = "flag"
 )
 
 const (
-	MODE_CLI = 0b100
-	MODE_CFG = 0b010
-	MODE_ENV = 0b001
+	modeCli = 0b100
+	modeCfg = 0b010
+	modeEnv = 0b001
 )
 
 var modes = map[string]int{
-	"cli": MODE_CLI,
-	"cfg": MODE_CFG,
-	"env": MODE_ENV,
+	"cli": modeCli,
+	"cfg": modeCfg,
+	"env": modeEnv,
 }
 
 const (
-	FLAG_CONFIG_FILE = 0b10
-	FLAG_ENV_PREFIX  = 0b01
+	flagConfigFile = 0b10
+	flagEnvPrefix  = 0b01
 )
 
 var flags = map[string]int{
-	"config_file": FLAG_CONFIG_FILE,
-	"env_prefix":  FLAG_ENV_PREFIX,
+	"config_file": flagConfigFile,
+	"env_prefix":  flagEnvPrefix,
 }
 
 var boolValues = map[bool][]string{
@@ -79,17 +79,17 @@ var boolValues = map[bool][]string{
 	false: {"false", "f", "n", "no"},
 }
 
-func NewParser(in interface{}) (Parser, error) {
+func NewParser(in interface{}) (parser, error) {
 	if reflect.Pointer != reflect.ValueOf(in).Type().Kind() {
-		return Parser{}, errors.New("in should be a pointer to struct")
+		return parser{}, errors.New("in should be a pointer to struct")
 	}
 
-	return Parser{
+	return parser{
 		in: in,
 	}, nil
 }
 
-func (p *Parser) Parse() error {
+func (p *parser) Parse() error {
 	p.fields = make(map[string]structField)
 
 	p.parseCli(os.Args)
@@ -103,13 +103,13 @@ func (p *Parser) Parse() error {
 		}
 
 		// Special configs that should be loaded just from cli and firstly
-		if field.tags.flags&FLAG_CONFIG_FILE > 0 {
+		if field.tags.flags&flagConfigFile > 0 {
 			if val, ok := p.getConfig(field.tags.name, field.tags.mode); ok {
 				field.value = val
 				p.cfgPath = val
 			}
 		}
-		if field.tags.flags&FLAG_ENV_PREFIX > 0 {
+		if field.tags.flags&flagEnvPrefix > 0 {
 			if val, ok := p.getConfig(field.tags.name, field.tags.mode); ok {
 				field.value = val
 				p.envPrefix = val
@@ -146,22 +146,22 @@ func (p *Parser) Parse() error {
 	return nil
 }
 
-func (p *Parser) newStructField(field reflect.StructField) (structField, error) {
+func (p *parser) newStructField(field reflect.StructField) (structField, error) {
 	var result = structField{}
 	result.name = field.Name
 	result.fieldType = field.Type.String()
 
-	tags := strings.Split(field.Tag.Get(TAG), SEPARATOR)
+	tags := strings.Split(field.Tag.Get(tag), separator)
 	for _, flag := range tags {
-		tmp := strings.Split(flag, SEPARATOR_INNER)
-		tagName := tmp[0]
-		tagValue := strings.Join(tmp[1:], SEPARATOR_INNER)
-		switch tagName {
-		case TAG_NAME:
-			result.tags.name = tagValue
-		case TAG_MODE:
+		tmp := strings.Split(flag, separatorInner)
+		fieldTagName := tmp[0]
+		fieldTagValue := strings.Join(tmp[1:], separatorInner)
+		switch fieldTagName {
+		case tagName:
+			result.tags.name = fieldTagValue
+		case tagMode:
 			result.tags.mode = 0
-			listTmp := strings.Split(tagValue, SEPARATOR_LIST)
+			listTmp := strings.Split(fieldTagValue, separatorList)
 			for _, val := range listTmp {
 				key, ok := modes[val]
 				if !ok {
@@ -169,13 +169,13 @@ func (p *Parser) newStructField(field reflect.StructField) (structField, error) 
 				}
 				result.tags.mode = result.tags.mode | key
 			}
-		case TAG_DEFAULT:
-			result.tags.defaultValue = tagValue
+		case tagDefault:
+			result.tags.defaultValue = fieldTagValue
 			result.tags.hasDefaultValue = true
-		case TAG_DESC:
-			result.tags.description = tagValue
-		case TAG_FLAG:
-			listTmp := strings.Split(tagValue, SEPARATOR_LIST)
+		case tagDesc:
+			result.tags.description = fieldTagValue
+		case tagFlag:
+			listTmp := strings.Split(fieldTagValue, separatorList)
 			for _, val := range listTmp {
 				key, ok := flags[val]
 				if !ok {
@@ -189,7 +189,7 @@ func (p *Parser) newStructField(field reflect.StructField) (structField, error) 
 	return result, nil
 }
 
-func (p *Parser) parseCli(args []string) {
+func (p *parser) parseCli(args []string) {
 	p.parsedCli = make(map[string]string)
 	pendingName := ""
 	for _, arg := range args {
@@ -222,7 +222,7 @@ func (p *Parser) parseCli(args []string) {
 	}
 }
 
-func (p *Parser) parseCfg() error {
+func (p *parser) parseCfg() error {
 	p.parsedCfg = make(map[string]string)
 
 	if "" == p.cfgPath {
@@ -259,25 +259,25 @@ func (p *Parser) parseCfg() error {
 	return nil
 }
 
-func (p *Parser) getConfig(name string, mode int) (string, bool) {
+func (p *parser) getConfig(name string, mode int) (string, bool) {
 	var value = ""
 	var find = false
 
-	if 0 == mode || mode&MODE_ENV > 0 {
+	if 0 == mode || mode&modeEnv > 0 {
 		if tmpValue, ok := os.LookupEnv(strings.ToUpper(fmt.Sprintf("%s%s", p.envPrefix, name))); ok {
 			value = tmpValue
 			find = true
 		}
 	}
 
-	if 0 == mode || mode&MODE_CFG > 0 {
+	if 0 == mode || mode&modeCfg > 0 {
 		if tmpValue, ok := p.parsedCfg[name]; ok {
 			value = tmpValue
 			find = true
 		}
 	}
 
-	if 0 == mode || mode&MODE_CLI > 0 {
+	if 0 == mode || mode&modeCli > 0 {
 		if tmpValue, ok := p.parsedCli[name]; ok {
 			value = tmpValue
 			find = true
@@ -287,7 +287,7 @@ func (p *Parser) getConfig(name string, mode int) (string, bool) {
 	return value, find
 }
 
-func (p *Parser) writeValueToField(field reflect.Value, value string) error {
+func (p *parser) writeValueToField(field reflect.Value, value string) error {
 	switch field.Type().Kind() {
 	case reflect.Bool:
 		value = strings.ToLower(value)
@@ -360,8 +360,6 @@ func (p *Parser) writeValueToField(field reflect.Value, value string) error {
 			return err
 		}
 		field.SetUint(convValue)
-	case reflect.Uintptr:
-		return errors.New("Uintptr are not supported yet")
 	case reflect.Float32:
 		return errors.New("Float32 are not supported yet")
 	case reflect.Float64:
@@ -374,22 +372,16 @@ func (p *Parser) writeValueToField(field reflect.Value, value string) error {
 		return errors.New("Array are not supported yet")
 	case reflect.Chan:
 		return errors.New("Chan are not supported yet")
-	case reflect.Func:
-		return errors.New("Func are not supported yet")
-	case reflect.Interface:
-		return errors.New("Interface are not supported yet")
 	case reflect.Map:
 		return errors.New("Map are not supported yet")
-	case reflect.Pointer:
-		return errors.New("Pointer are not supported yet")
 	case reflect.Slice:
 		return errors.New("Slice are not supported yet")
 	case reflect.String:
 		field.SetString(value)
 	case reflect.Struct:
 		return errors.New("Struct are not supported yet")
-	case reflect.UnsafePointer:
-		return errors.New("UnsafePointer are not supported yet")
+	default: // Uintptr, Func, Interface, Pointer, UnsafePointer
+		return errors.New(fmt.Sprintf("%s is not supported", field.Type().String()))
 	}
 
 	return nil

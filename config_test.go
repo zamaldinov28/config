@@ -22,11 +22,11 @@ func TestNewParser(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    Parser
+		want    parser
 		wantErr bool
 	}{
-		{name: "struct", args: args{in: testStruct{}}, want: Parser{}, wantErr: true},
-		{name: "pointer", args: args{in: &testStruct{}}, want: Parser{in: &testStruct{}}, wantErr: false},
+		{name: "struct", args: args{in: testStruct{}}, want: parser{}, wantErr: true},
+		{name: "pointer", args: args{in: &testStruct{}}, want: parser{in: &testStruct{}}, wantErr: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -42,7 +42,7 @@ func TestNewParser(t *testing.T) {
 	}
 }
 
-func TestParser_Parse(t *testing.T) {
+func Test_parser_Parse(t *testing.T) {
 	type errTestStructFile struct {
 		Help       bool   `config:"name:help;mode:cli;default:f;desc:Lorem ipsum"`
 		ConfigFile string `config:"name:config_file;mode:cli;flag:config_file;desc:Lorem ipsum"`
@@ -60,6 +60,7 @@ func TestParser_Parse(t *testing.T) {
 		Test string `config:"name:test;mode:env;desc:test"`
 		West int    `config:"name:best;mode:env;default:50;desc:best"`
 	}
+
 	type fields struct {
 		in        interface{}
 		fields    map[string]structField
@@ -117,7 +118,7 @@ func TestParser_Parse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &Parser{
+			p := &parser{
 				in:        tt.fields.in,
 				fields:    tt.fields.fields,
 				envPrefix: tt.fields.envPrefix,
@@ -126,13 +127,13 @@ func TestParser_Parse(t *testing.T) {
 				parsedCli: tt.fields.parsedCli,
 			}
 			if err := p.Parse(); (err != nil) != tt.wantErr {
-				t.Errorf("Parser.Parse() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("parser.Parse() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func TestParser_newStructField(t *testing.T) {
+func Test_parser_newStructField(t *testing.T) {
 	type str struct {
 		ConfigFile string `config:"name:config_file;mode:cli;flag:config_file;desc:Lorem ipsum"`
 		Prefix     string `config:"name:env_prefix;mode:cfg;flag:env_prefix;default:bf;desc:Lorem ipsum"`
@@ -161,14 +162,14 @@ func TestParser_newStructField(t *testing.T) {
 			name:    "file",
 			fields:  fields{in: &str{}},
 			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(0)},
-			want:    structField{name: "ConfigFile", fieldType: "string", value: "", tags: structFieldTags{name: "config_file", mode: MODE_CLI, flags: FLAG_CONFIG_FILE, description: "Lorem ipsum"}},
+			want:    structField{name: "ConfigFile", fieldType: "string", value: "", tags: structFieldTags{name: "config_file", mode: modeCli, flags: flagConfigFile, description: "Lorem ipsum"}},
 			wantErr: false,
 		},
 		{
 			name:    "env",
 			fields:  fields{in: &str{}},
 			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(1)},
-			want:    structField{name: "Prefix", fieldType: "string", value: "", tags: structFieldTags{name: "env_prefix", mode: MODE_CFG, flags: FLAG_ENV_PREFIX, defaultValue: "bf", hasDefaultValue: true, description: "Lorem ipsum"}},
+			want:    structField{name: "Prefix", fieldType: "string", value: "", tags: structFieldTags{name: "env_prefix", mode: modeCfg, flags: flagEnvPrefix, defaultValue: "bf", hasDefaultValue: true, description: "Lorem ipsum"}},
 			wantErr: false,
 		},
 		{
@@ -188,7 +189,7 @@ func TestParser_newStructField(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &Parser{
+			p := &parser{
 				in:        tt.fields.in,
 				fields:    tt.fields.fields,
 				envPrefix: tt.fields.envPrefix,
@@ -208,7 +209,7 @@ func TestParser_newStructField(t *testing.T) {
 	}
 }
 
-func TestParser_parseCli(t *testing.T) {
+func Test_parser_parseCli(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
@@ -228,7 +229,7 @@ func TestParser_parseCli(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &Parser{}
+			p := &parser{}
 			p.parseCli(tt.args)
 			if !reflect.DeepEqual(tt.want, p.parsedCli) {
 				t.Errorf("Parser.newStructField() = %v, want %v", p.parsedCli, tt.want)
@@ -237,7 +238,7 @@ func TestParser_parseCli(t *testing.T) {
 	}
 }
 
-func TestParser_parseCfg(t *testing.T) {
+func Test_parser_parseCfg(t *testing.T) {
 	dir := t.TempDir()
 
 	json, err := os.CreateTemp(dir, "config_*.json")
@@ -318,7 +319,7 @@ func TestParser_parseCfg(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &Parser{
+			p := &parser{
 				in:        tt.fields.in,
 				fields:    tt.fields.fields,
 				envPrefix: tt.fields.envPrefix,
@@ -333,7 +334,7 @@ func TestParser_parseCfg(t *testing.T) {
 	}
 }
 
-func TestParser_getConfig(t *testing.T) {
+func Test_parser_getConfig(t *testing.T) {
 	type fields struct {
 		in        interface{}
 		fields    map[string]structField
@@ -362,20 +363,20 @@ func TestParser_getConfig(t *testing.T) {
 	}{
 		{name: "404", fields: fields{parsedCli: cli, parsedCfg: cfg, envPrefix: "one_"}, args: args{name: "way", mode: 0}, want: "", want1: false},
 		{name: "all", fields: fields{parsedCli: cli, parsedCfg: cfg, envPrefix: "one_"}, args: args{name: "key", mode: 0}, want: "value1", want1: true},
-		{name: "cli", fields: fields{parsedCli: cli, parsedCfg: cfg, envPrefix: "one_"}, args: args{name: "key", mode: MODE_CLI}, want: "value1", want1: true},
-		{name: "cfg", fields: fields{parsedCli: cli, parsedCfg: cfg, envPrefix: "one_"}, args: args{name: "key", mode: MODE_CFG}, want: "value2", want1: true},
-		{name: "env", fields: fields{parsedCli: cli, parsedCfg: cfg, envPrefix: "one_"}, args: args{name: "key", mode: MODE_ENV}, want: "value3", want1: true},
-		{name: "cli cfg", fields: fields{parsedCli: cli, parsedCfg: cfg, envPrefix: "one_"}, args: args{name: "key", mode: MODE_CLI | MODE_CFG}, want: "value1", want1: true},
-		{name: "cli env", fields: fields{parsedCli: cli, parsedCfg: cfg, envPrefix: "one_"}, args: args{name: "key", mode: MODE_CLI | MODE_ENV}, want: "value1", want1: true},
-		{name: "cfg env", fields: fields{parsedCli: cli, parsedCfg: cfg, envPrefix: "one_"}, args: args{name: "key", mode: MODE_CFG | MODE_ENV}, want: "value2", want1: true},
+		{name: "cli", fields: fields{parsedCli: cli, parsedCfg: cfg, envPrefix: "one_"}, args: args{name: "key", mode: modeCli}, want: "value1", want1: true},
+		{name: "cfg", fields: fields{parsedCli: cli, parsedCfg: cfg, envPrefix: "one_"}, args: args{name: "key", mode: modeCfg}, want: "value2", want1: true},
+		{name: "env", fields: fields{parsedCli: cli, parsedCfg: cfg, envPrefix: "one_"}, args: args{name: "key", mode: modeEnv}, want: "value3", want1: true},
+		{name: "cli cfg", fields: fields{parsedCli: cli, parsedCfg: cfg, envPrefix: "one_"}, args: args{name: "key", mode: modeCli | modeCfg}, want: "value1", want1: true},
+		{name: "cli env", fields: fields{parsedCli: cli, parsedCfg: cfg, envPrefix: "one_"}, args: args{name: "key", mode: modeCli | modeEnv}, want: "value1", want1: true},
+		{name: "cfg env", fields: fields{parsedCli: cli, parsedCfg: cfg, envPrefix: "one_"}, args: args{name: "key", mode: modeCfg | modeEnv}, want: "value2", want1: true},
 		{name: "no cli", fields: fields{parsedCli: map[string]string{}, parsedCfg: cfg, envPrefix: "one_"}, args: args{name: "key", mode: 0}, want: "value2", want1: true},
 		{name: "no cfg", fields: fields{parsedCli: cli, parsedCfg: map[string]string{}, envPrefix: "one_"}, args: args{name: "key", mode: 0}, want: "value1", want1: true},
 		{name: "no env", fields: fields{parsedCli: cli, parsedCfg: cfg, envPrefix: "one"}, args: args{name: "key", mode: 0}, want: "value1", want1: true},
-		{name: "prefix env", fields: fields{parsedCli: cli, parsedCfg: cfg, envPrefix: "two_"}, args: args{name: "key", mode: MODE_ENV}, want: "value4", want1: true},
+		{name: "prefix env", fields: fields{parsedCli: cli, parsedCfg: cfg, envPrefix: "two_"}, args: args{name: "key", mode: modeEnv}, want: "value4", want1: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &Parser{
+			p := &parser{
 				in:        tt.fields.in,
 				fields:    tt.fields.fields,
 				envPrefix: tt.fields.envPrefix,
@@ -394,7 +395,7 @@ func TestParser_getConfig(t *testing.T) {
 	}
 }
 
-func TestParser_writeValueToField(t *testing.T) {
+func Test_parser_writeValueToField(t *testing.T) {
 	type fields struct {
 		in        interface{}
 		fields    map[string]structField
@@ -484,7 +485,7 @@ func TestParser_writeValueToField(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &Parser{
+			p := &parser{
 				in:        tt.fields.in,
 				fields:    tt.fields.fields,
 				envPrefix: tt.fields.envPrefix,
