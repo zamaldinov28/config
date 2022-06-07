@@ -16,7 +16,7 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-type parser struct {
+type Parser struct {
 	in        interface{}
 	fields    map[string]structField
 	envPrefix string
@@ -83,18 +83,18 @@ var boolValues = map[bool][]string{
 }
 
 // Create new instance of parser for specific config struct
-func NewParser(in interface{}) (parser, error) {
+func NewParser(in interface{}) (Parser, error) {
 	if reflect.Pointer != reflect.ValueOf(in).Type().Kind() {
-		return parser{}, errors.New("in should be a pointer to struct")
+		return Parser{}, errors.New("in should be a pointer to struct")
 	}
 
-	return parser{
+	return Parser{
 		in: in,
 	}, nil
 }
 
 // Return string with formatted and sorted usage hint
-func (p *parser) Help(prefix string) string {
+func (p *Parser) Help(prefix string) string {
 	longestParameter := 0
 	fieldsHelp := [][2]string{}
 
@@ -139,7 +139,7 @@ func (p *parser) Help(prefix string) string {
 }
 
 // Execute parsing from all available sources
-func (p *parser) Parse() error {
+func (p *Parser) Parse() error {
 	p.fields = make(map[string]structField)
 
 	p.parseCli(os.Args)
@@ -196,7 +196,7 @@ func (p *parser) Parse() error {
 	return nil
 }
 
-func (p *parser) newStructField(field reflect.StructField) (structField, error) {
+func (p *Parser) newStructField(field reflect.StructField) (structField, error) {
 	var result = structField{}
 	result.name = field.Name
 	result.fieldType = field.Type.String()
@@ -239,7 +239,7 @@ func (p *parser) newStructField(field reflect.StructField) (structField, error) 
 	return result, nil
 }
 
-func (p *parser) parseCli(args []string) {
+func (p *Parser) parseCli(args []string) {
 	p.parsedCli = make(map[string]string)
 	pendingName := ""
 	for _, arg := range args {
@@ -272,7 +272,7 @@ func (p *parser) parseCli(args []string) {
 	}
 }
 
-func (p *parser) parseCfg() error {
+func (p *Parser) parseCfg() error {
 	p.parsedCfg = make(map[string]string)
 
 	if "" == p.cfgPath {
@@ -309,7 +309,7 @@ func (p *parser) parseCfg() error {
 	return nil
 }
 
-func (p *parser) getConfig(name string, mode int) (string, bool) {
+func (p *Parser) getConfig(name string, mode int) (string, bool) {
 	var value = ""
 	var find = false
 
@@ -337,7 +337,7 @@ func (p *parser) getConfig(name string, mode int) (string, bool) {
 	return value, find
 }
 
-func (p *parser) writeValueToField(field reflect.Value, value string) error {
+func (p *Parser) writeValueToField(field reflect.Value, value string) error {
 	switch field.Type().Kind() {
 	case reflect.Bool:
 		value = strings.ToLower(value)

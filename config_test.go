@@ -22,11 +22,11 @@ func TestNewParser(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    parser
+		want    Parser
 		wantErr bool
 	}{
-		{name: "struct", args: args{in: testStruct{}}, want: parser{}, wantErr: true},
-		{name: "pointer", args: args{in: &testStruct{}}, want: parser{in: &testStruct{}}, wantErr: false},
+		{name: "struct", args: args{in: testStruct{}}, want: Parser{}, wantErr: true},
+		{name: "pointer", args: args{in: &testStruct{}}, want: Parser{in: &testStruct{}}, wantErr: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -42,7 +42,7 @@ func TestNewParser(t *testing.T) {
 	}
 }
 
-func Test_parser_Help(t *testing.T) {
+func TestParser_Help(t *testing.T) {
 	type fields struct {
 		in        interface{}
 		fields    map[string]structField
@@ -128,7 +128,7 @@ func Test_parser_Help(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &parser{
+			p := &Parser{
 				in:        tt.fields.in,
 				fields:    tt.fields.fields,
 				envPrefix: tt.fields.envPrefix,
@@ -143,7 +143,7 @@ func Test_parser_Help(t *testing.T) {
 	}
 }
 
-func Test_parser_Parse(t *testing.T) {
+func TestParser_Parse(t *testing.T) {
 	type errTestStructFile struct {
 		Help       bool   `config:"name:help;mode:cli;default:f;desc:Lorem ipsum"`
 		ConfigFile string `config:"name:config_file;mode:cli;flag:config_file;desc:Lorem ipsum"`
@@ -219,7 +219,7 @@ func Test_parser_Parse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &parser{
+			p := &Parser{
 				in:        tt.fields.in,
 				fields:    tt.fields.fields,
 				envPrefix: tt.fields.envPrefix,
@@ -234,7 +234,7 @@ func Test_parser_Parse(t *testing.T) {
 	}
 }
 
-func Test_parser_newStructField(t *testing.T) {
+func TestParser_newStructField(t *testing.T) {
 	type str struct {
 		ConfigFile string `config:"name:config_file;mode:cli;flag:config_file;desc:Lorem ipsum"`
 		Prefix     string `config:"name:env_prefix;mode:cfg;flag:env_prefix;default:bf;desc:Lorem ipsum"`
@@ -290,7 +290,7 @@ func Test_parser_newStructField(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &parser{
+			p := &Parser{
 				in:        tt.fields.in,
 				fields:    tt.fields.fields,
 				envPrefix: tt.fields.envPrefix,
@@ -310,7 +310,7 @@ func Test_parser_newStructField(t *testing.T) {
 	}
 }
 
-func Test_parser_parseCli(t *testing.T) {
+func TestParser_parseCli(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
@@ -330,7 +330,7 @@ func Test_parser_parseCli(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &parser{}
+			p := &Parser{}
 			p.parseCli(tt.args)
 			if !reflect.DeepEqual(tt.want, p.parsedCli) {
 				t.Errorf("Parser.newStructField() = %v, want %v", p.parsedCli, tt.want)
@@ -339,7 +339,7 @@ func Test_parser_parseCli(t *testing.T) {
 	}
 }
 
-func Test_parser_parseCfg(t *testing.T) {
+func TestParser_parseCfg(t *testing.T) {
 	dir := t.TempDir()
 
 	json, err := os.CreateTemp(dir, "config_*.json")
@@ -420,7 +420,7 @@ func Test_parser_parseCfg(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &parser{
+			p := &Parser{
 				in:        tt.fields.in,
 				fields:    tt.fields.fields,
 				envPrefix: tt.fields.envPrefix,
@@ -435,7 +435,7 @@ func Test_parser_parseCfg(t *testing.T) {
 	}
 }
 
-func Test_parser_getConfig(t *testing.T) {
+func TestParser_getConfig(t *testing.T) {
 	type fields struct {
 		in        interface{}
 		fields    map[string]structField
@@ -477,7 +477,7 @@ func Test_parser_getConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &parser{
+			p := &Parser{
 				in:        tt.fields.in,
 				fields:    tt.fields.fields,
 				envPrefix: tt.fields.envPrefix,
@@ -496,7 +496,7 @@ func Test_parser_getConfig(t *testing.T) {
 	}
 }
 
-func Test_parser_writeValueToField(t *testing.T) {
+func TestParser_writeValueToField(t *testing.T) {
 	type fields struct {
 		in        interface{}
 		fields    map[string]structField
@@ -586,7 +586,7 @@ func Test_parser_writeValueToField(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &parser{
+			p := &Parser{
 				in:        tt.fields.in,
 				fields:    tt.fields.fields,
 				envPrefix: tt.fields.envPrefix,
