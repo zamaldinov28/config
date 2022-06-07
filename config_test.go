@@ -13,8 +13,11 @@ import (
 func TestNewParser(t *testing.T) {
 	type testStruct struct {
 		Help       bool   `config:"name:help;mode:cli;default:f;desc:Lorem ipsum"`
-		ConfigFile string `config:"name:config_file;mode:cli;flag:config_file;desc:Lorem ipsum"`
-		Prefix     string `config:"name:prefix;mode:cli;flag:env_prefix;default:;desc:Lorem ipsum"`
+		ConfigFile string `config:"name:config_file;mode:cli;desc:Lorem ipsum"`
+		Prefix     string `config:"name:prefix;mode:cli;default:;desc:Lorem ipsum"`
+	}
+	type errTestStruct struct {
+		Help bool `config:"name:help;mode:ZZZ;default:f;desc:Lorem ipsum"`
 	}
 	type args struct {
 		in interface{}
@@ -26,7 +29,12 @@ func TestNewParser(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "struct", args: args{in: testStruct{}}, want: Parser{}, wantErr: true},
-		{name: "pointer", args: args{in: &testStruct{}}, want: Parser{in: &testStruct{}}, wantErr: false},
+		{name: "pointer", args: args{in: &testStruct{}}, want: Parser{in: &testStruct{}, fields: map[string]structField{
+			"Help":       {name: "Help", tags: structFieldTags{name: "help", mode: modeCli, defaultValue: "f", hasDefaultValue: true, description: "Lorem ipsum"}},
+			"ConfigFile": {name: "ConfigFile", tags: structFieldTags{name: "config_file", mode: modeCli, description: "Lorem ipsum"}},
+			"Prefix":     {name: "Prefix", tags: structFieldTags{name: "prefix", mode: modeCli, defaultValue: "", hasDefaultValue: true, description: "Lorem ipsum"}},
+		}}, wantErr: false},
+		{name: "err", args: args{in: &errTestStruct{}}, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -47,7 +55,6 @@ func TestParser_Help(t *testing.T) {
 		in        interface{}
 		fields    map[string]structField
 		envPrefix string
-		cfgPath   string
 		parsedCfg map[string]string
 		parsedCli map[string]string
 	}
@@ -132,12 +139,11 @@ func TestParser_Help(t *testing.T) {
 				in:        tt.fields.in,
 				fields:    tt.fields.fields,
 				envPrefix: tt.fields.envPrefix,
-				cfgPath:   tt.fields.cfgPath,
 				parsedCfg: tt.fields.parsedCfg,
 				parsedCli: tt.fields.parsedCli,
 			}
 			if got := p.Help(tt.args.prefix); got != tt.want {
-				t.Errorf("parser.Help() = \n%v\n, want \n%v\n", got, tt.want)
+				t.Errorf("Parser.Help() = \n%v\n, want \n%v\n", got, tt.want)
 			}
 		})
 	}
@@ -146,29 +152,27 @@ func TestParser_Help(t *testing.T) {
 func TestParser_Parse(t *testing.T) {
 	type errTestStructFile struct {
 		Help       bool   `config:"name:help;mode:cli;default:f;desc:Lorem ipsum"`
-		ConfigFile string `config:"name:config_file;mode:cli;flag:config_file;desc:Lorem ipsum"`
-		Prefix     string `config:"name:prefix;mode:cli;flag:env_prefix;default:;desc:Lorem ipsum"`
-	}
-	type errTestStructFlag struct {
-		Help       bool   `config:"name:help;mode:cli;default:f;desc:Lorem ipsum"`
-		ConfigFile string `config:"name:config_file;mode:cli;flag:ZZZ;desc:Lorem ipsum"`
-		Prefix     string `config:"name:prefix;mode:cli;flag:env_prefix;default:;desc:Lorem ipsum"`
+		ConfigFile string `config:"name:config_file;mode:cli;desc:Lorem ipsum"`
+		Prefix     string `config:"name:prefix;mode:cli;default:;desc:Lorem ipsum"`
 	}
 	type errTestStructConv struct {
 		West int `config:"name:best;mode:env;default:ss;desc:best"`
 	}
 	type goodStruct struct {
-		Test string `config:"name:test;mode:env;desc:test"`
-		West int    `config:"name:best;mode:env;default:50;desc:best"`
+		Test   string `config:"name:test;mode:env;desc:test"`
+		Prefix int    `config:"name:prefix;mode:cli;default:50;desc:best"`
 	}
 
 	type fields struct {
 		in        interface{}
 		fields    map[string]structField
 		envPrefix string
-		cfgPath   string
 		parsedCfg map[string]string
 		parsedCli map[string]string
+	}
+	type args struct {
+		cfgPathConfig   string
+		envPrefixConfig string
 	}
 
 	t.Setenv("100_TEST", "100")
@@ -194,26 +198,34 @@ func TestParser_Parse(t *testing.T) {
 	tests := []struct {
 		name    string
 		fields  fields
+		args    args
 		wantErr bool
 	}{
 		{
-			name:    "broken file",
-			fields:  fields{in: &errTestStructFile{}},
+			name: "broken file",
+			fields: fields{in: &errTestStructFile{}, fields: map[string]structField{
+				"Help":       {name: "Help", tags: structFieldTags{name: "help", mode: modeCli, defaultValue: "f", hasDefaultValue: true, description: "Lorem ipsum"}},
+				"ConfigFile": {name: "ConfigFile", tags: structFieldTags{name: "config_file", mode: modeCli, description: "Lorem ipsum"}},
+				"Prefix":     {name: "Prefix", tags: structFieldTags{name: "prefix", mode: modeCli, defaultValue: "", hasDefaultValue: true, description: "Lorem ipsum"}},
+			}},
+			args:    args{cfgPathConfig: "config_file", envPrefixConfig: "prefix"},
 			wantErr: true,
 		},
 		{
-			name:    "error flag",
-			fields:  fields{in: &errTestStructFlag{}},
+			name: "error conv",
+			fields: fields{in: &errTestStructConv{}, fields: map[string]structField{
+				"West": {name: "West", tags: structFieldTags{name: "best", mode: modeEnv, defaultValue: "ss", hasDefaultValue: true, description: "best"}},
+			}},
+			args:    args{cfgPathConfig: "config_file", envPrefixConfig: "prefix"},
 			wantErr: true,
 		},
 		{
-			name:    "error conv",
-			fields:  fields{in: &errTestStructConv{}},
-			wantErr: true,
-		},
-		{
-			name:    "good struct",
-			fields:  fields{in: &goodStruct{}},
+			name: "good struct",
+			fields: fields{in: &goodStruct{}, fields: map[string]structField{
+				"Test":   {name: "Test", tags: structFieldTags{name: "test", mode: modeEnv, description: "test"}},
+				"Prefix": {name: "Prefix", tags: structFieldTags{name: "prefix", mode: modeCli, defaultValue: "50", hasDefaultValue: true, description: "best"}},
+			}},
+			args:    args{cfgPathConfig: "config_file", envPrefixConfig: "prefix"},
 			wantErr: false,
 		},
 	}
@@ -223,12 +235,11 @@ func TestParser_Parse(t *testing.T) {
 				in:        tt.fields.in,
 				fields:    tt.fields.fields,
 				envPrefix: tt.fields.envPrefix,
-				cfgPath:   tt.fields.cfgPath,
 				parsedCfg: tt.fields.parsedCfg,
 				parsedCli: tt.fields.parsedCli,
 			}
-			if err := p.Parse(); (err != nil) != tt.wantErr {
-				t.Errorf("parser.Parse() error = %v, wantErr %v", err, tt.wantErr)
+			if err := p.Parse(tt.args.cfgPathConfig, tt.args.envPrefixConfig); (err != nil) != tt.wantErr {
+				t.Errorf("Parser.Parse() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -236,16 +247,14 @@ func TestParser_Parse(t *testing.T) {
 
 func TestParser_newStructField(t *testing.T) {
 	type str struct {
-		ConfigFile string `config:"name:config_file;mode:cli;flag:config_file;desc:Lorem ipsum"`
-		Prefix     string `config:"name:env_prefix;mode:cfg;flag:env_prefix;default:bf;desc:Lorem ipsum"`
+		ConfigFile string `config:"name:config_file;mode:cli;desc:Lorem ipsum"`
+		Prefix     string `config:"name:env_prefix;mode:cfg;default:bf;desc:Lorem ipsum"`
 		ErrMode    string `config:"name:err_mode;mode:ZZZ"`
-		ErrFlag    string `config:"name:err_flag;flag:ZZZ"`
 	}
 	type fields struct {
 		in        interface{}
 		fields    map[string]structField
 		envPrefix string
-		cfgPath   string
 		parsedCfg map[string]string
 		parsedCli map[string]string
 	}
@@ -263,27 +272,20 @@ func TestParser_newStructField(t *testing.T) {
 			name:    "file",
 			fields:  fields{in: &str{}},
 			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(0)},
-			want:    structField{name: "ConfigFile", fieldType: "string", value: "", tags: structFieldTags{name: "config_file", mode: modeCli, flags: flagConfigFile, description: "Lorem ipsum"}},
+			want:    structField{name: "ConfigFile", tags: structFieldTags{name: "config_file", mode: modeCli, description: "Lorem ipsum"}},
 			wantErr: false,
 		},
 		{
 			name:    "env",
 			fields:  fields{in: &str{}},
 			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(1)},
-			want:    structField{name: "Prefix", fieldType: "string", value: "", tags: structFieldTags{name: "env_prefix", mode: modeCfg, flags: flagEnvPrefix, defaultValue: "bf", hasDefaultValue: true, description: "Lorem ipsum"}},
+			want:    structField{name: "Prefix", tags: structFieldTags{name: "env_prefix", mode: modeCfg, defaultValue: "bf", hasDefaultValue: true, description: "Lorem ipsum"}},
 			wantErr: false,
 		},
 		{
 			name:    "mode",
 			fields:  fields{in: &str{}},
 			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(2)},
-			want:    structField{},
-			wantErr: true,
-		},
-		{
-			name:    "flag",
-			fields:  fields{in: &str{}},
-			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(3)},
 			want:    structField{},
 			wantErr: true,
 		},
@@ -294,7 +296,6 @@ func TestParser_newStructField(t *testing.T) {
 				in:        tt.fields.in,
 				fields:    tt.fields.fields,
 				envPrefix: tt.fields.envPrefix,
-				cfgPath:   tt.fields.cfgPath,
 				parsedCfg: tt.fields.parsedCfg,
 				parsedCli: tt.fields.parsedCli,
 			}
@@ -401,22 +402,25 @@ func TestParser_parseCfg(t *testing.T) {
 		in        interface{}
 		fields    map[string]structField
 		envPrefix string
-		cfgPath   string
 		parsedCfg map[string]string
 		parsedCli map[string]string
+	}
+	type args struct {
+		path string
 	}
 	tests := []struct {
 		name    string
 		fields  fields
+		args    args
 		wantErr bool
 	}{
-		{name: "empty", fields: fields{cfgPath: ""}, wantErr: false},
-		{name: "json", fields: fields{cfgPath: json.Name()}, wantErr: false},
-		{name: "not exist", fields: fields{cfgPath: "/zzz.json"}, wantErr: true},
-		{name: "json rights", fields: fields{cfgPath: jsonRights.Name()}, wantErr: true},
-		{name: "broken file", fields: fields{cfgPath: "\000x"}, wantErr: true},
-		{name: "broken json", fields: fields{cfgPath: brokenJson.Name()}, wantErr: true},
-		{name: "ini", fields: fields{cfgPath: ini.Name()}, wantErr: false},
+		{name: "empty", args: args{path: ""}, wantErr: false},
+		{name: "json", args: args{path: json.Name()}, wantErr: false},
+		{name: "not exist", args: args{path: "/zzz.json"}, wantErr: true},
+		{name: "json rights", args: args{path: jsonRights.Name()}, wantErr: true},
+		{name: "broken file", args: args{path: "\000x"}, wantErr: true},
+		{name: "broken json", args: args{path: brokenJson.Name()}, wantErr: true},
+		{name: "ini", args: args{path: ini.Name()}, wantErr: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -424,11 +428,10 @@ func TestParser_parseCfg(t *testing.T) {
 				in:        tt.fields.in,
 				fields:    tt.fields.fields,
 				envPrefix: tt.fields.envPrefix,
-				cfgPath:   tt.fields.cfgPath,
 				parsedCfg: tt.fields.parsedCfg,
 				parsedCli: tt.fields.parsedCli,
 			}
-			if err := p.parseCfg(); (err != nil) != tt.wantErr {
+			if err := p.parseCfg(tt.args.path); (err != nil) != tt.wantErr {
 				t.Errorf("Parser.parseCfg() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -440,7 +443,6 @@ func TestParser_getConfig(t *testing.T) {
 		in        interface{}
 		fields    map[string]structField
 		envPrefix string
-		cfgPath   string
 		parsedCfg map[string]string
 		parsedCli map[string]string
 	}
@@ -481,7 +483,6 @@ func TestParser_getConfig(t *testing.T) {
 				in:        tt.fields.in,
 				fields:    tt.fields.fields,
 				envPrefix: tt.fields.envPrefix,
-				cfgPath:   tt.fields.cfgPath,
 				parsedCfg: tt.fields.parsedCfg,
 				parsedCli: tt.fields.parsedCli,
 			}
@@ -501,7 +502,6 @@ func TestParser_writeValueToField(t *testing.T) {
 		in        interface{}
 		fields    map[string]structField
 		envPrefix string
-		cfgPath   string
 		parsedCfg map[string]string
 		parsedCli map[string]string
 	}
@@ -590,7 +590,6 @@ func TestParser_writeValueToField(t *testing.T) {
 				in:        tt.fields.in,
 				fields:    tt.fields.fields,
 				envPrefix: tt.fields.envPrefix,
-				cfgPath:   tt.fields.cfgPath,
 				parsedCfg: tt.fields.parsedCfg,
 				parsedCli: tt.fields.parsedCli,
 			}

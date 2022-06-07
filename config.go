@@ -16,44 +16,49 @@ import (
 	"golang.org/x/exp/maps"
 )
 
+// Struct where stored all received and parsed values
 type Parser struct {
 	in        interface{}
 	fields    map[string]structField
 	envPrefix string
-	cfgPath   string
 	parsedCfg map[string]string // File
 	parsedCli map[string]string // Command-line args
 }
 
+// Each field of received config struct has own instance
 type structField struct {
-	name      string
-	fieldType string
-	value     string
-	tags      structFieldTags
+	name string
+	tags structFieldTags
 }
 
+// Parsed values of specific field's tags
 type structFieldTags struct {
 	name            string
 	mode            int
 	defaultValue    string
 	hasDefaultValue bool
 	description     string
-	flags           int
 }
 
-const separator = ";"
-const separatorInner = ":"
-const separatorList = ","
+const (
+	// Separator that used in tags to divide different params
+	separator = ";"
+	// Splitter between tag param's key and value. Ex.: `name:param_name`
+	separatorInner = ":"
+	// Splitter between values list. Ex.: `mode:cli,cfg`
+	separatorList = ","
+)
 
+// Moved to const just to have all of them at one place
 const (
 	tag        = "config"
 	tagName    = "name"
 	tagMode    = "mode"
 	tagDefault = "default"
 	tagDesc    = "desc"
-	tagFlag    = "flag"
 )
 
+// Available modes where specific param will be looked for
 const (
 	modeCli = 0b100
 	modeCfg = 0b010
@@ -61,36 +66,44 @@ const (
 	modeAll = 0b111
 )
 
+// Keys - available modes textual values and flags
 var modes = map[string]int{
 	"cli": modeCli,
 	"cfg": modeCfg,
 	"env": modeEnv,
 }
 
-const (
-	flagConfigFile = 0b10
-	flagEnvPrefix  = 0b01
-)
-
-var flags = map[string]int{
-	"config_file": flagConfigFile,
-	"env_prefix":  flagEnvPrefix,
-}
-
+// Accepted values for boolean fields.
+// While compare given value will be lowercased
 var boolValues = map[bool][]string{
 	true:  {"true", "t", "y", "yes"},
 	false: {"false", "f", "n", "no"},
 }
 
-// Create new instance of parser for specific config struct
+// Create new instance of parser for specific config struct.
 func NewParser(in interface{}) (Parser, error) {
 	if reflect.Pointer != reflect.ValueOf(in).Type().Kind() {
 		return Parser{}, errors.New("in should be a pointer to struct")
 	}
 
-	return Parser{
-		in: in,
-	}, nil
+	var p = Parser{
+		in:     in,
+		fields: make(map[string]structField),
+	}
+
+	// Parse struct into fields with tags
+	s := reflect.ValueOf(p.in).Elem()
+	typeOfT := s.Type()
+	for i := 0; i < s.NumField(); i++ {
+		field, err := p.newStructField(typeOfT.Field(i))
+		if err != nil {
+			return Parser{}, err
+		}
+
+		p.fields[field.name] = field
+	}
+
+	return p, nil
 }
 
 // Return string with formatted and sorted usage hint
@@ -139,40 +152,30 @@ func (p *Parser) Help(prefix string) string {
 }
 
 // Execute parsing from all available sources
-func (p *Parser) Parse() error {
-	p.fields = make(map[string]structField)
-
+// Set cfgPathConfig if you use config file
+// Set envPrefixConfig if you use environment variables and they have project-specific prefix.
+func (p *Parser) Parse(cfgPathConfig, envPrefixConfig string) error {
 	p.parseCli(os.Args)
 
-	s := reflect.ValueOf(p.in).Elem()
-	typeOfT := s.Type()
-	for i := 0; i < s.NumField(); i++ {
-		field, err := p.newStructField(typeOfT.Field(i))
-		if err != nil {
-			return err
-		}
-
-		// Special configs that should be loaded just from cli and firstly
-		if field.tags.flags&flagConfigFile > 0 {
+	// Special configs that should be loaded just from cli and firstly
+	for _, field := range p.fields {
+		if cfgPathConfig == field.tags.name {
 			if val, ok := p.getConfig(field.tags.name, field.tags.mode); ok {
-				field.value = val
-				p.cfgPath = val
+				err := p.parseCfg(val)
+				if err != nil {
+					return err
+				}
 			}
 		}
-		if field.tags.flags&flagEnvPrefix > 0 {
+		if envPrefixConfig == field.tags.name {
 			if val, ok := p.getConfig(field.tags.name, field.tags.mode); ok {
-				field.value = val
 				p.envPrefix = val
 			}
 		}
-		p.fields[field.name] = field
 	}
 
-	err := p.parseCfg()
-	if err != nil {
-		return err
-	}
-
+	s := reflect.ValueOf(p.in).Elem()
+	typeOfT := s.Type()
 	for i := 0; i < s.NumField(); i++ {
 		field := s.Field(i)
 
@@ -187,7 +190,7 @@ func (p *Parser) Parse() error {
 			}
 		}
 
-		err = p.writeValueToField(field, value)
+		err := p.writeValueToField(field, value)
 		if err != nil {
 			return err
 		}
@@ -196,10 +199,10 @@ func (p *Parser) Parse() error {
 	return nil
 }
 
+// Generate instance of structField from reflect struct field
 func (p *Parser) newStructField(field reflect.StructField) (structField, error) {
 	var result = structField{}
 	result.name = field.Name
-	result.fieldType = field.Type.String()
 
 	tags := strings.Split(field.Tag.Get(tag), separator)
 	for _, flag := range tags {
@@ -224,21 +227,13 @@ func (p *Parser) newStructField(field reflect.StructField) (structField, error) 
 			result.tags.hasDefaultValue = true
 		case tagDesc:
 			result.tags.description = fieldTagValue
-		case tagFlag:
-			listTmp := strings.Split(fieldTagValue, separatorList)
-			for _, val := range listTmp {
-				key, ok := flags[val]
-				if !ok {
-					return structField{}, errors.New(fmt.Sprintf("Unknown flag %s. Available flags: %s", val, strings.Join(maps.Keys(flags), ", ")))
-				}
-				result.tags.flags = result.tags.flags | key
-			}
 		}
 	}
 
 	return result, nil
 }
 
+// Parse arguments from command line
 func (p *Parser) parseCli(args []string) {
 	p.parsedCli = make(map[string]string)
 	pendingName := ""
@@ -272,25 +267,26 @@ func (p *Parser) parseCli(args []string) {
 	}
 }
 
-func (p *Parser) parseCfg() error {
+// Read and parse config file
+func (p *Parser) parseCfg(path string) error {
 	p.parsedCfg = make(map[string]string)
 
-	if "" == p.cfgPath {
+	if "" == path {
 		return nil
 	}
 
-	if _, err := os.Stat(p.cfgPath); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		return errors.New("Cannot find config file")
 	} else if err != nil {
 		return err
 	}
 
-	fileContent, err := ioutil.ReadFile(p.cfgPath)
+	fileContent, err := ioutil.ReadFile(path)
 	if err != nil {
 		return err
 	}
 
-	ext := filepath.Ext(p.cfgPath)
+	ext := filepath.Ext(path)
 
 	if ".json" == ext {
 		tmp := make(map[string]interface{})
@@ -309,6 +305,7 @@ func (p *Parser) parseCfg() error {
 	return nil
 }
 
+// Look for specific config in allowed (for this field) places
 func (p *Parser) getConfig(name string, mode int) (string, bool) {
 	var value = ""
 	var find = false
@@ -337,6 +334,7 @@ func (p *Parser) getConfig(name string, mode int) (string, bool) {
 	return value, find
 }
 
+// Convert founded value to required type, and put it into struct field
 func (p *Parser) writeValueToField(field reflect.Value, value string) error {
 	switch field.Type().Kind() {
 	case reflect.Bool:
