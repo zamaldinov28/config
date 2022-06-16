@@ -19,7 +19,7 @@ import (
 // Struct where stored all received and parsed values
 type Parser struct {
 	in        interface{}
-	fields    map[string]structField
+	fields    map[string]*structField
 	envPrefix string
 	parsedCfg map[string]string // File
 	parsedCli map[string]string // Command-line args
@@ -88,7 +88,7 @@ func NewParser(in interface{}) (Parser, error) {
 
 	var p = Parser{
 		in:     in,
-		fields: make(map[string]structField),
+		fields: make(map[string]*structField),
 	}
 
 	// Parse struct into fields with tags
@@ -200,11 +200,16 @@ func (p *Parser) Parse(cfgPathConfig, envPrefixConfig string) error {
 }
 
 // Generate instance of structField from reflect struct field
-func (p *Parser) newStructField(field reflect.StructField) (structField, error) {
-	var result = structField{}
+func (p *Parser) newStructField(field reflect.StructField) (*structField, error) {
+	var result = &structField{}
 	result.name = field.Name
 
-	tags := strings.Split(field.Tag.Get(tag), separator)
+	tagValue, ok := field.Tag.Lookup(tag)
+	if !ok {
+		return nil, nil
+	}
+
+	tags := strings.Split(tagValue, separator)
 	for _, flag := range tags {
 		tmp := strings.Split(flag, separatorInner)
 		fieldTagName := tmp[0]
@@ -218,7 +223,7 @@ func (p *Parser) newStructField(field reflect.StructField) (structField, error) 
 			for _, val := range listTmp {
 				key, ok := modes[val]
 				if !ok {
-					return structField{}, errors.New(fmt.Sprintf("Unknown mode %s. Available modes: %s", val, strings.Join(maps.Keys(modes), ", ")))
+					return nil, errors.New(fmt.Sprintf("Unknown mode %s. Available modes: %s", val, strings.Join(maps.Keys(modes), ", ")))
 				}
 				result.tags.mode = result.tags.mode | key
 			}
