@@ -12,9 +12,12 @@ import (
 
 func TestNewParser(t *testing.T) {
 	type testStruct struct {
-		Help       bool   `config:"name:help;mode:cli;default:f;desc:Lorem ipsum"`
-		ConfigFile string `config:"name:config_file;mode:cli;desc:Lorem ipsum"`
-		Prefix     string `config:"name:prefix;mode:cli;default:;desc:Lorem ipsum"`
+		Help             bool   `config:"name:help;mode:cli;default:f;desc:Lorem ipsum"`
+		ConfigFile       string `config:"name:config_file;mode:cli;desc:Lorem ipsum"`
+		Prefix           string `config:"name:prefix;mode:cli;default:;desc:Lorem ipsum"`
+		Ignored          string
+		alsoIgnored      string
+		alsoShowdIgnored string `some:"another_tag"`
 	}
 	type errTestStruct struct {
 		Help bool `config:"name:help;mode:ZZZ;default:f;desc:Lorem ipsum"`
@@ -161,6 +164,7 @@ func TestParser_Parse(t *testing.T) {
 	type goodStruct struct {
 		Test   string `config:"name:test;mode:env;desc:test"`
 		Prefix int    `config:"name:prefix;mode:cli;default:50;desc:best"`
+		Ignore string
 	}
 
 	type fields struct {

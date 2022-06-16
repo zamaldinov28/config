@@ -100,6 +100,10 @@ func NewParser(in interface{}) (Parser, error) {
 			return Parser{}, err
 		}
 
+		if field == nil {
+			continue
+		}
+
 		p.fields[field.name] = field
 	}
 
@@ -180,6 +184,9 @@ func (p *Parser) Parse(cfgPathConfig, envPrefixConfig string) error {
 		field := s.Field(i)
 
 		parsedField, _ := p.fields[typeOfT.Field(i).Name]
+		if parsedField == nil {
+			continue
+		}
 
 		value, isSet := p.getConfig(parsedField.tags.name, parsedField.tags.mode)
 		if !isSet {
