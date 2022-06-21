@@ -166,6 +166,10 @@ func TestParser_Parse(t *testing.T) {
 		Prefix int    `config:"name:prefix;mode:cli;default:50;desc:best"`
 		Ignore string
 	}
+	type defaultValuesStruct struct {
+		ConfigFile string `config:"name:config_file_not_from_cli;mode:cli;default:/will/be/replaced/later.json;desc:Lorem ipsum"`
+		Prefix     string `config:"name:prefix_not_from_cli;mode:cli;default:TEST_;desc:Lorem ipsum"`
+	}
 
 	type fields struct {
 		in        interface{}
@@ -193,6 +197,21 @@ func TestParser_Parse(t *testing.T) {
 	}
 
 	_, err = f.WriteString(`{"prefix":"100}`) // With error
+	if err != nil {
+		t.Error(err)
+	}
+
+	fgood, err := os.CreateTemp(dir, "config_*.json")
+	if err != nil {
+		t.Error(err)
+	}
+
+	err = fgood.Chmod(0777)
+	if err != nil {
+		t.Error(err)
+	}
+
+	_, err = fgood.WriteString(`{"test":"100"}`)
 	if err != nil {
 		t.Error(err)
 	}
@@ -231,6 +250,24 @@ func TestParser_Parse(t *testing.T) {
 			}},
 			args:    args{cfgPathConfig: "config_file", envPrefixConfig: "prefix"},
 			wantErr: false,
+		},
+		{
+			name: "default values struct",
+			fields: fields{in: &defaultValuesStruct{}, fields: map[string]*structField{
+				"ConfigFile": {name: "ConfigFile", tags: structFieldTags{name: "config_file_not_from_cli", mode: modeCli, defaultValue: fgood.Name(), hasDefaultValue: true, description: "Lorem ipsum"}},
+				"Prefix":     {name: "Prefix", tags: structFieldTags{name: "prefix_not_from_cli", mode: modeCli, defaultValue: "TEST_", hasDefaultValue: true, description: "Lorem ipsum"}},
+			}},
+			args:    args{cfgPathConfig: "config_file_not_from_cli", envPrefixConfig: "prefix_not_from_cli"},
+			wantErr: false,
+		},
+		{
+			name: "default values struct broken",
+			fields: fields{in: &defaultValuesStruct{}, fields: map[string]*structField{
+				"ConfigFile": {name: "ConfigFile", tags: structFieldTags{name: "config_file_not_from_cli", mode: modeCli, defaultValue: f.Name(), hasDefaultValue: true, description: "Lorem ipsum"}},
+				"Prefix":     {name: "Prefix", tags: structFieldTags{name: "prefix_not_from_cli", mode: modeCli, defaultValue: "TEST_", hasDefaultValue: true, description: "Lorem ipsum"}},
+			}},
+			args:    args{cfgPathConfig: "config_file_not_from_cli", envPrefixConfig: "prefix_not_from_cli"},
+			wantErr: true,
 		},
 	}
 	for _, tt := range tests {

@@ -169,11 +169,18 @@ func (p *Parser) Parse(cfgPathConfig, envPrefixConfig string) error {
 				if err != nil {
 					return err
 				}
+			} else if field.tags.hasDefaultValue {
+				err := p.parseCfg(field.tags.defaultValue)
+				if err != nil {
+					return err
+				}
 			}
 		}
 		if envPrefixConfig == field.tags.name {
 			if val, ok := p.getConfig(field.tags.name, field.tags.mode); ok {
 				p.envPrefix = val
+			} else if field.tags.hasDefaultValue {
+				p.envPrefix = field.tags.defaultValue
 			}
 		}
 	}
