@@ -1,8 +1,8 @@
 # Config setup from different sources
 
 [![Buy me a coffee](https://badgen.net/badge/icon/buymeacoffee?icon=buymeacoffee&label)](https://www.buymeacoffee.com/zamaldinov28)
-[![Go package doc](https://badgen.net/badge/icon/Go%20reference?icon=https%3A%2F%2Fgo.dev%2Fblog%2Fgo-brand%2FGo-Logo%2FSVG%2FGo-Logo_White.svg&label)](https://pkg.go.dev/github.com/zamaldinov28/config)
 ![Last stable version](https://badgen.net/github/release/zamaldinov28/config)
+[![Go Reference](https://pkg.go.dev/badge/github.com/zamaldinov28/config.svg)](https://pkg.go.dev/github.com/zamaldinov28/config)
 
 If you need to take configs from different env, config file, or from cli, combine it into one struct, and use it as simple as possible, you are here! Tiny package allow you to setup everything you want using golang tag `config`, and few lines of code.
 
@@ -109,4 +109,19 @@ will print
 
 ```
     --db_user[=root] Database username (cli, cfg only)
+```
+
+You can skip this parameter, and in this case this field will not be added to help hint. Also you can add empty description to field. In this case will be printed just auto-generated info. Example:
+
+```golang
+First  string `config:"name:first;mode:cli,cfg;default:root"`
+Second string `config:"name:second;mode:cli,cfg;default:root;desc:"`
+Third  string `config:"name:third;mode:env;desc:Lorem ipsum"`
+```
+
+will print
+
+```
+    --second[=root] (cli, cfg only)
+    --third         Lorem ipsum (env only)
 ```

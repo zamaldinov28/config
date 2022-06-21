@@ -38,6 +38,7 @@ type structFieldTags struct {
 	defaultValue    string
 	hasDefaultValue bool
 	description     string
+	hasDescription  bool
 }
 
 const (
@@ -116,6 +117,10 @@ func (p *Parser) Help(prefix string) string {
 	fieldsHelp := [][2]string{}
 
 	for _, field := range p.fields {
+		if !field.tags.hasDescription {
+			continue
+		}
+
 		defaultHint := ""
 		if field.tags.hasDefaultValue {
 			defaultHint = fmt.Sprintf("[=%s]", field.tags.defaultValue)
@@ -130,7 +135,10 @@ func (p *Parser) Help(prefix string) string {
 				}
 			}
 			if len(fieldModes) > 0 {
-				rightPart = fmt.Sprintf("%s (%s only)", rightPart, strings.Join(fieldModes, ", "))
+				if len(rightPart) > 0 {
+					rightPart = rightPart + " "
+				}
+				rightPart = fmt.Sprintf("%s(%s only)", rightPart, strings.Join(fieldModes, ", "))
 			}
 		}
 		fieldsHelp = append(fieldsHelp, [2]string{
@@ -246,6 +254,7 @@ func (p *Parser) newStructField(field reflect.StructField) (*structField, error)
 			result.tags.hasDefaultValue = true
 		case tagDesc:
 			result.tags.description = fieldTagValue
+			result.tags.hasDescription = true
 		}
 	}
 

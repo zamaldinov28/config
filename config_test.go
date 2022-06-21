@@ -13,8 +13,8 @@ import (
 func TestNewParser(t *testing.T) {
 	type testStruct struct {
 		Help             bool   `config:"name:help;mode:cli;default:f;desc:Lorem ipsum"`
-		ConfigFile       string `config:"name:config_file;mode:cli;desc:Lorem ipsum"`
-		Prefix           string `config:"name:prefix;mode:cli;default:;desc:Lorem ipsum"`
+		ConfigFile       string `config:"name:config_file;mode:cli"`
+		Prefix           string `config:"name:prefix;mode:cli;default:;desc:"`
 		Ignored          string
 		alsoIgnored      string
 		alsoShowdIgnored string `some:"another_tag"`
@@ -33,9 +33,9 @@ func TestNewParser(t *testing.T) {
 	}{
 		{name: "struct", args: args{in: testStruct{}}, want: Parser{}, wantErr: true},
 		{name: "pointer", args: args{in: &testStruct{}}, want: Parser{in: &testStruct{}, fields: map[string]*structField{
-			"Help":       {name: "Help", tags: structFieldTags{name: "help", mode: modeCli, defaultValue: "f", hasDefaultValue: true, description: "Lorem ipsum"}},
-			"ConfigFile": {name: "ConfigFile", tags: structFieldTags{name: "config_file", mode: modeCli, description: "Lorem ipsum"}},
-			"Prefix":     {name: "Prefix", tags: structFieldTags{name: "prefix", mode: modeCli, defaultValue: "", hasDefaultValue: true, description: "Lorem ipsum"}},
+			"Help":       {name: "Help", tags: structFieldTags{name: "help", mode: modeCli, defaultValue: "f", hasDefaultValue: true, description: "Lorem ipsum", hasDescription: true}},
+			"ConfigFile": {name: "ConfigFile", tags: structFieldTags{name: "config_file", mode: modeCli}},
+			"Prefix":     {name: "Prefix", tags: structFieldTags{name: "prefix", mode: modeCli, defaultValue: "", hasDefaultValue: true, description: "", hasDescription: true}},
 		}}, wantErr: false},
 		{name: "err", args: args{in: &errTestStruct{}}, wantErr: true},
 	}
@@ -81,22 +81,41 @@ func TestParser_Help(t *testing.T) {
 							defaultValue:    "1",
 							hasDefaultValue: true,
 							description:     "Some description",
+							hasDescription:  true,
 						},
 					},
 					"second_field": {
 						name: "long_field",
 						tags: structFieldTags{
-							name:        "afffffff",
-							mode:        modeCli | modeCfg,
-							description: "Some more description",
+							name:           "afffffff",
+							mode:           modeCli | modeCfg,
+							description:    "Some more description",
+							hasDescription: true,
 						},
 					},
 					"third_field": {
 						name: "long_field",
 						tags: structFieldTags{
-							name:        "cfffffffff",
-							mode:        modeCli | modeCfg | modeEnv,
-							description: "Some more more description",
+							name:           "cfffffffff",
+							mode:           modeCli | modeCfg | modeEnv,
+							description:    "Some more more description",
+							hasDescription: true,
+						},
+					},
+					"fourth_field": {
+						name: "field_with_no_desc",
+						tags: structFieldTags{
+							name: "cxxxxxxxx",
+							mode: modeCli | modeCfg | modeEnv,
+						},
+					},
+					"fifth_field": {
+						name: "field_with_empty_desc",
+						tags: structFieldTags{
+							name:           "yyyyyyyy",
+							mode:           modeCli,
+							description:    "",
+							hasDescription: true,
 						},
 					},
 				},
@@ -104,6 +123,7 @@ func TestParser_Help(t *testing.T) {
 			want: `--afffffff   Some more description (cli, cfg only)
 --b[=1]      Some description
 --cfffffffff Some more more description
+--yyyyyyyy   (cli only)
 `,
 		},
 		{
@@ -117,6 +137,7 @@ func TestParser_Help(t *testing.T) {
 							defaultValue:    "1",
 							hasDefaultValue: true,
 							description:     "Some description",
+							hasDescription:  true,
 						},
 					},
 					"second_field": {
@@ -126,6 +147,7 @@ func TestParser_Help(t *testing.T) {
 							defaultValue:    "2",
 							hasDefaultValue: true,
 							description:     "Some description two",
+							hasDescription:  true,
 						},
 					},
 				},
@@ -227,9 +249,9 @@ func TestParser_Parse(t *testing.T) {
 		{
 			name: "broken file",
 			fields: fields{in: &errTestStructFile{}, fields: map[string]*structField{
-				"Help":       {name: "Help", tags: structFieldTags{name: "help", mode: modeCli, defaultValue: "f", hasDefaultValue: true, description: "Lorem ipsum"}},
-				"ConfigFile": {name: "ConfigFile", tags: structFieldTags{name: "config_file", mode: modeCli, description: "Lorem ipsum"}},
-				"Prefix":     {name: "Prefix", tags: structFieldTags{name: "prefix", mode: modeCli, defaultValue: "", hasDefaultValue: true, description: "Lorem ipsum"}},
+				"Help":       {name: "Help", tags: structFieldTags{name: "help", mode: modeCli, defaultValue: "f", hasDefaultValue: true}},
+				"ConfigFile": {name: "ConfigFile", tags: structFieldTags{name: "config_file", mode: modeCli}},
+				"Prefix":     {name: "Prefix", tags: structFieldTags{name: "prefix", mode: modeCli, defaultValue: "", hasDefaultValue: true}},
 			}},
 			args:    args{cfgPathConfig: "config_file", envPrefixConfig: "prefix"},
 			wantErr: true,
@@ -254,8 +276,8 @@ func TestParser_Parse(t *testing.T) {
 		{
 			name: "default values struct",
 			fields: fields{in: &defaultValuesStruct{}, fields: map[string]*structField{
-				"ConfigFile": {name: "ConfigFile", tags: structFieldTags{name: "config_file_not_from_cli", mode: modeCli, defaultValue: fgood.Name(), hasDefaultValue: true, description: "Lorem ipsum"}},
-				"Prefix":     {name: "Prefix", tags: structFieldTags{name: "prefix_not_from_cli", mode: modeCli, defaultValue: "TEST_", hasDefaultValue: true, description: "Lorem ipsum"}},
+				"ConfigFile": {name: "ConfigFile", tags: structFieldTags{name: "config_file_not_from_cli", mode: modeCli, defaultValue: fgood.Name(), hasDefaultValue: true}},
+				"Prefix":     {name: "Prefix", tags: structFieldTags{name: "prefix_not_from_cli", mode: modeCli, defaultValue: "TEST_", hasDefaultValue: true}},
 			}},
 			args:    args{cfgPathConfig: "config_file_not_from_cli", envPrefixConfig: "prefix_not_from_cli"},
 			wantErr: false,
@@ -263,8 +285,8 @@ func TestParser_Parse(t *testing.T) {
 		{
 			name: "default values struct broken",
 			fields: fields{in: &defaultValuesStruct{}, fields: map[string]*structField{
-				"ConfigFile": {name: "ConfigFile", tags: structFieldTags{name: "config_file_not_from_cli", mode: modeCli, defaultValue: f.Name(), hasDefaultValue: true, description: "Lorem ipsum"}},
-				"Prefix":     {name: "Prefix", tags: structFieldTags{name: "prefix_not_from_cli", mode: modeCli, defaultValue: "TEST_", hasDefaultValue: true, description: "Lorem ipsum"}},
+				"ConfigFile": {name: "ConfigFile", tags: structFieldTags{name: "config_file_not_from_cli", mode: modeCli, defaultValue: f.Name(), hasDefaultValue: true}},
+				"Prefix":     {name: "Prefix", tags: structFieldTags{name: "prefix_not_from_cli", mode: modeCli, defaultValue: "TEST_", hasDefaultValue: true}},
 			}},
 			args:    args{cfgPathConfig: "config_file_not_from_cli", envPrefixConfig: "prefix_not_from_cli"},
 			wantErr: true,
@@ -315,14 +337,14 @@ func TestParser_newStructField(t *testing.T) {
 			name:    "file",
 			fields:  fields{in: &str{}},
 			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(0)},
-			want:    &structField{name: "ConfigFile", tags: structFieldTags{name: "config_file", mode: modeCli, description: "Lorem ipsum"}},
+			want:    &structField{name: "ConfigFile", tags: structFieldTags{name: "config_file", mode: modeCli, description: "Lorem ipsum", hasDescription: true}},
 			wantErr: false,
 		},
 		{
 			name:    "env",
 			fields:  fields{in: &str{}},
 			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(1)},
-			want:    &structField{name: "Prefix", tags: structFieldTags{name: "env_prefix", mode: modeCfg, defaultValue: "bf", hasDefaultValue: true, description: "Lorem ipsum"}},
+			want:    &structField{name: "Prefix", tags: structFieldTags{name: "env_prefix", mode: modeCfg, defaultValue: "bf", hasDefaultValue: true, description: "Lorem ipsum", hasDescription: true}},
 			wantErr: false,
 		},
 		{
