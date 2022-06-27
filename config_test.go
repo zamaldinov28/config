@@ -12,15 +12,31 @@ import (
 
 func TestNewParser(t *testing.T) {
 	type testStruct struct {
-		Help             bool   `config:"name:help;mode:cli;default:f;desc:Lorem ipsum"`
-		ConfigFile       string `config:"name:config_file;mode:cli"`
-		Prefix           string `config:"name:prefix;mode:cli;default:;desc:"`
-		Ignored          string
-		alsoIgnored      string
-		alsoShowdIgnored string `some:"another_tag"`
+		Help              bool   `config:"name:help;mode:cli;default:f;desc:Lorem ipsum"`
+		ConfigFile        string `config:"name:config_file;mode:cli"`
+		Prefix            string `config:"name:prefix;mode:cli;default:;desc:"`
+		Ignored           string
+		alsoIgnored       string
+		alsoShouldIgnored string `some:"another_tag"`
+		Nested            struct {
+			Int       int `config:"name:int"`
+			NestedTwo struct {
+				Bool   bool   `config:"name:nestedtwo.bool"`
+				String string `config:"name:string"`
+				Ignore string
+			} `config:"mode:cli"`
+		} `config:"name:nested;mode:cli,env"`
 	}
 	type errTestStruct struct {
 		Help bool `config:"name:help;mode:ZZZ;default:f;desc:Lorem ipsum"`
+	}
+	type errNestedModeStruct struct {
+		Nested struct {
+			Int    int `config:"name:int"`
+			Nested struct {
+				Bool bool `config:"name:bool"`
+			} `config:"name:nested;mode:cfg"` // Should be cli or/and env
+		} `config:"name:nested;mode:cli,env"`
 	}
 	type args struct {
 		in interface{}
@@ -33,11 +49,15 @@ func TestNewParser(t *testing.T) {
 	}{
 		{name: "struct", args: args{in: testStruct{}}, want: Parser{}, wantErr: true},
 		{name: "pointer", args: args{in: &testStruct{}}, want: Parser{in: &testStruct{}, fields: map[string]*structField{
-			"Help":       {name: "Help", tags: structFieldTags{name: "help", mode: modeCli, defaultValue: "f", hasDefaultValue: true, description: "Lorem ipsum", hasDescription: true}},
-			"ConfigFile": {name: "ConfigFile", tags: structFieldTags{name: "config_file", mode: modeCli}},
-			"Prefix":     {name: "Prefix", tags: structFieldTags{name: "prefix", mode: modeCli, defaultValue: "", hasDefaultValue: true, description: "", hasDescription: true}},
+			"Help":                    {name: "Help", tags: structFieldTags{name: "help", mode: modeCli, defaultValue: "f", hasDefaultValue: true, description: "Lorem ipsum", hasDescription: true}},
+			"ConfigFile":              {name: "ConfigFile", tags: structFieldTags{name: "config_file", mode: modeCli}},
+			"Prefix":                  {name: "Prefix", tags: structFieldTags{name: "prefix", mode: modeCli, defaultValue: "", hasDefaultValue: true, description: "", hasDescription: true}},
+			"Nested.Int":              {name: "Nested.Int", tags: structFieldTags{name: "nested.int", mode: modeCli | modeEnv}},
+			"Nested.NestedTwo.Bool":   {name: "Nested.NestedTwo.Bool", tags: structFieldTags{name: "nested.nestedtwo.bool", mode: modeCli}},
+			"Nested.NestedTwo.String": {name: "Nested.NestedTwo.String", tags: structFieldTags{name: "nested.string", mode: modeCli}},
 		}}, wantErr: false},
 		{name: "err", args: args{in: &errTestStruct{}}, wantErr: true},
+		{name: "err nested mode", args: args{in: &errNestedModeStruct{}}, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -118,12 +138,22 @@ func TestParser_Help(t *testing.T) {
 							hasDescription: true,
 						},
 					},
+					"nested_field": {
+						name: "nested_field",
+						tags: structFieldTags{
+							name:           "nested.field",
+							mode:           modeCli | modeCfg,
+							description:    "Nested field example",
+							hasDescription: true,
+						},
+					},
 				},
 			},
-			want: `--afffffff   Some more description (cli, cfg only)
---b[=1]      Some description
---cfffffffff Some more more description
---yyyyyyyy   (cli only)
+			want: `--afffffff     Some more description (cli, cfg only)
+--b[=1]        Some description
+--cfffffffff   Some more more description
+--nested.field Nested field example (cli, cfg only)
+--yyyyyyyy     (cli only)
 `,
 		},
 		{
@@ -184,9 +214,18 @@ func TestParser_Parse(t *testing.T) {
 		West int `config:"name:best;mode:env;default:ss;desc:best"`
 	}
 	type goodStruct struct {
-		Test   string `config:"name:test;mode:env;desc:test"`
-		Prefix int    `config:"name:prefix;mode:cli;default:50;desc:best"`
-		Ignore string
+		ConfigFile string `config:"name:good_config_file;mode:cli;desc:Lorem ipsum"`
+		Test       string `config:"name:test;mode:env;desc:test"`
+		Prefix     int    `config:"name:prefix;mode:cli;default:50;desc:best"`
+		Ignore     string
+		Nested     struct {
+			Int       int `config:"name:int"`
+			NestedTwo struct {
+				Bool   bool   `config:"name:nestedtwo.bool"`
+				String string `config:"name:string"`
+				Ignore string
+			} `config:""`
+		} `config:"name:nested"`
 	}
 	type defaultValuesStruct struct {
 		ConfigFile string `config:"name:config_file_not_from_cli;mode:cli;default:/will/be/replaced/later.json;desc:Lorem ipsum"`
@@ -233,12 +272,12 @@ func TestParser_Parse(t *testing.T) {
 		t.Error(err)
 	}
 
-	_, err = fgood.WriteString(`{"test":"100"}`)
+	_, err = fgood.WriteString(`{"test":"100","nested":{"int":5,"string":"lorem","nestedtwo":{"bool":true}}}`)
 	if err != nil {
 		t.Error(err)
 	}
 
-	os.Args = []string{"/app/test", "zzz", fmt.Sprintf("--config_file=%s", f.Name()), "--prefix=100"}
+	os.Args = []string{"/app/test", "zzz", fmt.Sprintf("--config_file=%s", f.Name()), fmt.Sprintf("--good_config_file=%s", fgood.Name()), "--prefix=100"}
 
 	tests := []struct {
 		name    string
@@ -267,10 +306,14 @@ func TestParser_Parse(t *testing.T) {
 		{
 			name: "good struct",
 			fields: fields{in: &goodStruct{}, fields: map[string]*structField{
-				"Test":   {name: "Test", tags: structFieldTags{name: "test", mode: modeEnv, description: "test"}},
-				"Prefix": {name: "Prefix", tags: structFieldTags{name: "prefix", mode: modeCli, defaultValue: "50", hasDefaultValue: true, description: "best"}},
+				"ConfigFile":              {name: "ConfigFile", tags: structFieldTags{name: "good_config_file", mode: modeCli}},
+				"Test":                    {name: "Test", tags: structFieldTags{name: "test", mode: modeEnv, description: "test"}},
+				"Prefix":                  {name: "Prefix", tags: structFieldTags{name: "prefix", mode: modeCli, defaultValue: "50", hasDefaultValue: true, description: "best"}},
+				"Nested.Int":              {name: "Nested.Int", tags: structFieldTags{name: "nested.int"}},
+				"Nested.NestedTwo.Bool":   {name: "Nested.NestedTwo.Bool", tags: structFieldTags{name: "nested.nestedtwo.bool"}},
+				"Nested.NestedTwo.String": {name: "Nested.NestedTwo.String", tags: structFieldTags{name: "nested.string"}},
 			}},
-			args:    args{cfgPathConfig: "config_file", envPrefixConfig: "prefix"},
+			args:    args{cfgPathConfig: "good_config_file", envPrefixConfig: "prefix"},
 			wantErr: false,
 		},
 		{
@@ -308,14 +351,20 @@ func TestParser_Parse(t *testing.T) {
 	}
 }
 
-func TestParser_newStructField(t *testing.T) {
-	type str struct {
-		ConfigFile  string `config:"name:config_file;mode:cli;desc:Lorem ipsum"`
-		Prefix      string `config:"name:env_prefix;mode:cfg;default:bf;desc:Lorem ipsum"`
-		ErrMode     string `config:"name:err_mode;mode:ZZZ"`
-		Skipped     string
-		alsoSkipped string
+func TestParser_fillStructWithValues(t *testing.T) {
+	type goodStruct struct {
+		String    string `config:"name:string"`
+		StringTwo string `config:"name:string_two"`
+		Nested    struct {
+			Int       int `config:"name:int"`
+			NestedTwo struct {
+				Bool   bool   `config:"name:nestedtwo.bool"`
+				String string `config:"name:string"`
+				Ignore string
+			} `config:""`
+		} `config:"name:nested"`
 	}
+
 	type fields struct {
 		in        interface{}
 		fields    map[string]*structField
@@ -324,49 +373,53 @@ func TestParser_newStructField(t *testing.T) {
 		parsedCli map[string]string
 	}
 	type args struct {
-		field reflect.StructField
+		target interface{}
+		prefix string
 	}
 	tests := []struct {
 		name    string
 		fields  fields
 		args    args
-		want    *structField
 		wantErr bool
 	}{
 		{
-			name:    "file",
-			fields:  fields{in: &str{}},
-			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(0)},
-			want:    &structField{name: "ConfigFile", tags: structFieldTags{name: "config_file", mode: modeCli, description: "Lorem ipsum", hasDescription: true}},
-			wantErr: false,
+			name: "good",
+			fields: fields{
+				in: &goodStruct{},
+				fields: map[string]*structField{
+					"String":                  {name: "String", tags: structFieldTags{name: "string", defaultValue: "test", hasDefaultValue: true}},
+					"StringTwo":               {name: "StringTwo", tags: structFieldTags{name: "string"}},
+					"Nested.Int":              {name: "Nested.Int", tags: structFieldTags{name: "nested.int"}},
+					"Nested.NestedTwo.Bool":   {name: "Nested.NestedTwo.Bool", tags: structFieldTags{name: "nested.nestedtwo.bool"}},
+					"Nested.NestedTwo.String": {name: "Nested.NestedTwo.String", tags: structFieldTags{name: "nested.string"}},
+				},
+				parsedCfg: map[string]string{
+					"nested.int":            "321",
+					"nested.nestedtwo.bool": "true",
+					"nested.string":         "qwerty",
+				},
+			},
+			args: args{target: &goodStruct{}, prefix: ""},
 		},
 		{
-			name:    "env",
-			fields:  fields{in: &str{}},
-			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(1)},
-			want:    &structField{name: "Prefix", tags: structFieldTags{name: "env_prefix", mode: modeCfg, defaultValue: "bf", hasDefaultValue: true, description: "Lorem ipsum", hasDescription: true}},
-			wantErr: false,
-		},
-		{
-			name:    "mode",
-			fields:  fields{in: &str{}},
-			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(2)},
-			want:    nil,
+			name: "error",
+			fields: fields{
+				in: &goodStruct{},
+				fields: map[string]*structField{
+					"String":                  {name: "String", tags: structFieldTags{name: "string"}},
+					"Nested.Int":              {name: "Nested.Int", tags: structFieldTags{name: "nested.int"}},
+					"Nested.NestedTwo.Bool":   {name: "Nested.NestedTwo.Bool", tags: structFieldTags{name: "nested.nestedtwo.bool"}},
+					"Nested.NestedTwo.String": {name: "Nested.NestedTwo.String", tags: structFieldTags{name: "nested.string"}},
+				},
+				parsedCfg: map[string]string{
+					"string":                "lorem",
+					"nested.int":            "ZZZ",
+					"nested.nestedtwo.bool": "true",
+					"nested.string":         "qwerty",
+				},
+			},
+			args:    args{target: &goodStruct{}, prefix: ""},
 			wantErr: true,
-		},
-		{
-			name:    "skipped",
-			fields:  fields{in: &str{}},
-			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(3)},
-			want:    nil,
-			wantErr: false,
-		},
-		{
-			name:    "skipped 2",
-			fields:  fields{in: &str{}},
-			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(4)},
-			want:    nil,
-			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
@@ -378,11 +431,110 @@ func TestParser_newStructField(t *testing.T) {
 				parsedCfg: tt.fields.parsedCfg,
 				parsedCli: tt.fields.parsedCli,
 			}
-			got, err := p.newStructField(tt.args.field)
+			if err := p.fillStructWithValues(tt.args.target, tt.args.prefix); (err != nil) != tt.wantErr {
+				t.Errorf("Parser.fillStructWithValues() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestParser_newStructField(t *testing.T) {
+	type str struct {
+		ConfigFile string `config:"name:config_file;mode:cli;desc:Lorem ipsum"`
+		Prefix     string `config:"name:env_prefix;mode:cfg;default:bf;desc:Lorem ipsum"`
+		ErrMode    string `config:"name:err_mode;mode:ZZZ"`
+		Skipped    string
+		Nested     struct {
+			Int       int `config:"name:int"`
+			NestedTwo struct {
+				Bool   bool   `config:"name:nestedtwo.bool"`
+				String string `config:"name:string"`
+				Ignore string
+			} `config:"mode:cli"`
+		} `config:"name:nested;mode:cli,env"`
+		NestedErr struct {
+			Err string `config:"name:nested.err;mode:cfg"`
+		} `config:"mode:cli"`
+	}
+	type fields struct {
+		in        interface{}
+		fields    map[string]*structField
+		envPrefix string
+		parsedCfg map[string]string
+		parsedCli map[string]string
+	}
+	type args struct {
+		field  reflect.StructField
+		parent *structField
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    map[string]*structField
+		wantErr bool
+	}{
+		{
+			name:    "file",
+			fields:  fields{in: &str{}, fields: make(map[string]*structField)},
+			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(0)},
+			want:    map[string]*structField{"ConfigFile": {name: "ConfigFile", tags: structFieldTags{name: "config_file", mode: modeCli, description: "Lorem ipsum", hasDescription: true}}},
+			wantErr: false,
+		},
+		{
+			name:    "env",
+			fields:  fields{in: &str{}, fields: make(map[string]*structField)},
+			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(1)},
+			want:    map[string]*structField{"Prefix": {name: "Prefix", tags: structFieldTags{name: "env_prefix", mode: modeCfg, defaultValue: "bf", hasDefaultValue: true, description: "Lorem ipsum", hasDescription: true}}},
+			wantErr: false,
+		},
+		{
+			name:    "mode",
+			fields:  fields{in: &str{}, fields: make(map[string]*structField)},
+			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(2)},
+			want:    map[string]*structField{},
+			wantErr: true,
+		},
+		{
+			name:    "skipped",
+			fields:  fields{in: &str{}, fields: make(map[string]*structField)},
+			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(3)},
+			want:    map[string]*structField{},
+			wantErr: false,
+		},
+		{
+			name:   "nested",
+			fields: fields{in: &str{}, fields: make(map[string]*structField)},
+			args:   args{field: reflect.ValueOf(&str{}).Elem().Type().Field(4)},
+			want: map[string]*structField{
+				"Nested.Int":              {name: "Nested.Int", tags: structFieldTags{name: "nested.int", mode: modeCli | modeEnv}},
+				"Nested.NestedTwo.Bool":   {name: "Nested.NestedTwo.Bool", tags: structFieldTags{name: "nested.nestedtwo.bool", mode: modeCli}},
+				"Nested.NestedTwo.String": {name: "Nested.NestedTwo.String", tags: structFieldTags{name: "nested.string", mode: modeCli}},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "mode error",
+			fields:  fields{in: &str{}, fields: make(map[string]*structField)},
+			args:    args{field: reflect.ValueOf(&str{}).Elem().Type().Field(5)},
+			want:    map[string]*structField{},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &Parser{
+				in:        tt.fields.in,
+				fields:    tt.fields.fields,
+				envPrefix: tt.fields.envPrefix,
+				parsedCfg: tt.fields.parsedCfg,
+				parsedCli: tt.fields.parsedCli,
+			}
+			err := p.newStructField(tt.args.field, tt.args.parent)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Parser.newStructField() error = %v, wantErr %v", err, tt.wantErr)
-				return
 			}
+			got := p.fields
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Parser.newStructField() = %v, want %v", got, tt.want)
 			}
@@ -512,6 +664,74 @@ func TestParser_parseCfg(t *testing.T) {
 			}
 			if err := p.parseCfg(tt.args.path); (err != nil) != tt.wantErr {
 				t.Errorf("Parser.parseCfg() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestParser_saveToParsed(t *testing.T) {
+	type fields struct {
+		in        interface{}
+		fields    map[string]*structField
+		envPrefix string
+		parsedCfg map[string]string
+		parsedCli map[string]string
+	}
+	type args struct {
+		tmp    map[string]interface{}
+		prefix string
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		want   map[string]string
+	}{
+		{
+			name: "simple",
+			fields: fields{
+				parsedCfg: make(map[string]string),
+			},
+			args: args{
+				tmp: map[string]interface{}{
+					"bool":   true,
+					"int":    123,
+					"string": "test",
+					"nested": map[string]interface{}{
+						"bool":   false,
+						"int":    321,
+						"string": "west",
+						"nested": map[string]interface{}{
+							"one":  1,
+							"more": "123",
+						},
+					},
+				},
+			},
+			want: map[string]string{
+				"bool":               "true",
+				"int":                "123",
+				"string":             "test",
+				"nested.bool":        "false",
+				"nested.int":         "321",
+				"nested.string":      "west",
+				"nested.nested.one":  "1",
+				"nested.nested.more": "123",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &Parser{
+				in:        tt.fields.in,
+				fields:    tt.fields.fields,
+				envPrefix: tt.fields.envPrefix,
+				parsedCfg: tt.fields.parsedCfg,
+				parsedCli: tt.fields.parsedCli,
+			}
+			p.saveToParsed(tt.args.tmp, tt.args.prefix)
+			if !reflect.DeepEqual(tt.want, p.parsedCfg) {
+				t.Errorf("Parser.getConfig() got = %v, want %v", p.parsedCfg, tt.want)
 			}
 		})
 	}

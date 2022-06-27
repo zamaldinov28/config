@@ -48,6 +48,8 @@ const (
 	separatorInner = ":"
 	// Splitter between values list. Ex.: `mode:cli,cfg`
 	separatorList = ","
+	// Separator to use in pathes of nested struct params
+	separatorNested = "."
 )
 
 // Moved to const just to have all of them at one place
@@ -96,16 +98,10 @@ func NewParser(in interface{}) (Parser, error) {
 	s := reflect.ValueOf(p.in).Elem()
 	typeOfT := s.Type()
 	for i := 0; i < s.NumField(); i++ {
-		field, err := p.newStructField(typeOfT.Field(i))
+		err := p.newStructField(typeOfT.Field(i), nil)
 		if err != nil {
 			return Parser{}, err
 		}
-
-		if field == nil {
-			continue
-		}
-
-		p.fields[field.name] = field
 	}
 
 	return p, nil
@@ -193,12 +189,37 @@ func (p *Parser) Parse(cfgPathConfig, envPrefixConfig string) error {
 		}
 	}
 
-	s := reflect.ValueOf(p.in).Elem()
+	err := p.fillStructWithValues(p.in, "")
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Recursively go over struct fields and fill fields with their received values
+func (p *Parser) fillStructWithValues(target interface{}, prefix string) error {
+	s := reflect.ValueOf(target).Elem()
 	typeOfT := s.Type()
 	for i := 0; i < s.NumField(); i++ {
 		field := s.Field(i)
+		fieldName := typeOfT.Field(i).Name
+		if prefix != "" {
+			fieldName = fmt.Sprintf("%s%s%s", prefix, separatorNested, fieldName)
+		}
 
-		parsedField, _ := p.fields[typeOfT.Field(i).Name]
+		if field.Type().Kind() == reflect.Struct {
+			newStruct := reflect.New(s.Field(i).Type()).Interface()
+
+			err := p.fillStructWithValues(newStruct, fieldName)
+			if err != nil {
+				return err
+			}
+
+			s.Field(i).Set(reflect.ValueOf(newStruct).Elem())
+		}
+
+		parsedField, _ := p.fields[fieldName]
 		if parsedField == nil {
 			continue
 		}
@@ -222,13 +243,13 @@ func (p *Parser) Parse(cfgPathConfig, envPrefixConfig string) error {
 }
 
 // Generate instance of structField from reflect struct field
-func (p *Parser) newStructField(field reflect.StructField) (*structField, error) {
+func (p *Parser) newStructField(field reflect.StructField, parent *structField) error {
 	var result = &structField{}
 	result.name = field.Name
 
 	tagValue, ok := field.Tag.Lookup(tag)
 	if !ok {
-		return nil, nil
+		return nil
 	}
 
 	tags := strings.Split(tagValue, separator)
@@ -245,7 +266,7 @@ func (p *Parser) newStructField(field reflect.StructField) (*structField, error)
 			for _, val := range listTmp {
 				key, ok := modes[val]
 				if !ok {
-					return nil, errors.New(fmt.Sprintf("Unknown mode %s. Available modes: %s", val, strings.Join(maps.Keys(modes), ", ")))
+					return errors.New(fmt.Sprintf("Unknown mode %s. Available modes: %s", val, strings.Join(maps.Keys(modes), ", ")))
 				}
 				result.tags.mode = result.tags.mode | key
 			}
@@ -257,8 +278,39 @@ func (p *Parser) newStructField(field reflect.StructField) (*structField, error)
 			result.tags.hasDescription = true
 		}
 	}
+	if parent != nil {
+		result.name = fmt.Sprintf("%s%s%s", parent.name, separatorNested, result.name)
 
-	return result, nil
+		if parent.tags.name != "" {
+			if result.tags.name != "" {
+				result.tags.name = fmt.Sprintf("%s%s%s", parent.tags.name, separatorNested, result.tags.name)
+			} else {
+				result.tags.name = parent.tags.name
+			}
+		}
+
+		if result.tags.mode&^parent.tags.mode > 0 {
+			return errors.New("Nested struct fields should have modes just limited by parent field")
+		}
+		if result.tags.mode == 0 {
+			result.tags.mode = parent.tags.mode
+		}
+	}
+
+	if field.Type.Kind() == reflect.Struct {
+		s := reflect.New(field.Type).Elem()
+		for i := 0; i < s.NumField(); i++ {
+			err := p.newStructField(s.Type().Field(i), result)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+
+	p.fields[result.name] = result
+	return nil
 }
 
 // Parse arguments from command line
@@ -323,14 +375,27 @@ func (p *Parser) parseCfg(path string) error {
 			return err
 		}
 
-		for k, v := range tmp {
-			p.parsedCfg[k] = fmt.Sprint(v)
-		}
+		p.saveToParsed(tmp, "")
 
 		return nil
 	}
 
 	return nil
+}
+
+// Saved parsed json map into parser struct. Exist because of recursion in nested json objects
+func (p *Parser) saveToParsed(tmp map[string]interface{}, prefix string) {
+	for k, v := range tmp {
+		if prefix != "" {
+			k = fmt.Sprintf("%s%s%s", prefix, separatorNested, k)
+		}
+		switch c := v.(type) {
+		case map[string]interface{}:
+			p.saveToParsed(c, k)
+		default:
+			p.parsedCfg[k] = fmt.Sprint(v)
+		}
+	}
 }
 
 // Look for specific config in allowed (for this field) places
@@ -455,8 +520,8 @@ func (p *Parser) writeValueToField(field reflect.Value, value string) error {
 	case reflect.String:
 		field.SetString(value)
 	case reflect.Struct:
-		return errors.New("Struct are not supported yet")
-	default: // Uintptr, Func, Interface, Pointer, UnsafePointer
+		return errors.New("Struct is not supported") // Struct should be handled with nested case
+	default: // Uintptr, Func, Interface, Pointer, Struct, UnsafePointer
 		return errors.New(fmt.Sprintf("%s is not supported", field.Type().String()))
 	}
 
