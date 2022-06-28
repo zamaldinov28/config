@@ -502,13 +502,29 @@ func (p *Parser) writeValueToField(field reflect.Value, value string) error {
 		}
 		field.SetUint(convValue)
 	case reflect.Float32:
-		return errors.New("Float32 are not supported yet")
+		convValue, err := strconv.ParseFloat(value, 32)
+		if err != nil {
+			return err
+		}
+		field.SetFloat(convValue)
 	case reflect.Float64:
-		return errors.New("Float64 are not supported yet")
+		convValue, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return err
+		}
+		field.SetFloat(convValue)
 	case reflect.Complex64:
-		return errors.New("Complex64 are not supported yet")
+		convValue, err := strconv.ParseComplex(value, 64)
+		if err != nil {
+			return err
+		}
+		field.SetComplex(convValue)
 	case reflect.Complex128:
-		return errors.New("Complex128 are not supported yet")
+		convValue, err := strconv.ParseComplex(value, 128)
+		if err != nil {
+			return err
+		}
+		field.SetComplex(convValue)
 	case reflect.Array:
 		return errors.New("Array are not supported yet")
 	case reflect.Chan:
